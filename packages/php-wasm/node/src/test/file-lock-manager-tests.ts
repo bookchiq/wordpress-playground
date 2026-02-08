@@ -72,9 +72,9 @@ export function declareFileLockManagerTests({
 				execArgv: EXEC_ARGV,
 				stdio: 'inherit',
 			});
-			// TODO: Fix this type error.
-			// @ts-ignore
-			const api = await consumeAPI<TestWorkerAPI>(child);
+			const api = await consumeAPI<TestWorkerAPI>(
+				child as unknown as Parameters<typeof consumeAPI>[0]
+			);
 
 			return [child, api];
 		};

@@ -5,9 +5,6 @@ import {
 	type FileLockManager,
 } from './file-lock-manager';
 
-// TODO: Remove console.debug statements after debugging.
-/* eslint-disable no-console */
-
 // TODO: Add unit tests for this class.
 // TODO: Find a clearer name for this class.
 // TODO: Add optional granular tracing
@@ -102,17 +99,11 @@ export class FileLockManagerComposite implements FileLockManager {
 
 	// TODO: Consider try/catch for both release methods. OTOH, if one throws, it is catastrophic.
 	releaseLocksForProcess(pid: number): void {
-		// console.debug(`[Composite] releaseLocksForProcess: pid=${pid}`);
-		// Release locks on both managers.
 		this.nativeLockManager.releaseLocksForProcess(pid);
 		this.wasmLockManager.releaseLocksForProcess(pid);
 	}
 
 	releaseLocksOnFdClose(pid: number, fd: number, path: Path): void {
-		// console.debug(
-		// 	`[Composite] releaseLocksOnFdClose: pid=${pid}, fd=${fd}, path=${path}`
-		// );
-		// Release locks on both managers.
 		this.nativeLockManager.releaseLocksOnFdClose(pid, fd, path);
 		this.wasmLockManager.releaseLocksOnFdClose(pid, fd, path);
 	}

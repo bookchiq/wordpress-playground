@@ -97,6 +97,7 @@ export { sandboxedSpawnHandlerFactory } from './sandboxed-spawn-handler-factory'
 
 export * from './api';
 export type { WithAPIState as WithIsReady } from './api';
+export type { NodeProcess } from './comlink-node-process-adapter';
 
 export * from './file-lock-manager';
 export * from './file-lock-manager-in-memory';

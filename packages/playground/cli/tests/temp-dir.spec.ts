@@ -116,9 +116,7 @@ describe('temp-dir', () => {
 			expect(fs.existsSync(tempDir)).toBe(false);
 		}
 	}, 60000 /* Avoid timeout when testing on Windows */);
-	// TODO: Remove the log messages from this test after debugging.
 	it('should not clean up stale temp dir if the process is still running', async () => {
-		console.log('sending create-temp-dir');
 		childProcess.send({
 			type: 'create-temp-dir',
 			substrToIdentifyTempDirs,
@@ -126,14 +124,10 @@ describe('temp-dir', () => {
 			autoCleanup: false,
 		});
 		const tempDirPath = await new Promise<string>((resolve, reject) => {
-			console.log('waiting for message');
 			childProcess.once('message', (message: any) => {
-				console.log('received message', message);
 				if (message.type === 'temp-dir') {
-					console.log('resolve');
 					resolve(message.tempDirPath);
 				} else {
-					console.log('reject');
 					reject(new Error('Unexpected message'));
 				}
 			});
@@ -148,10 +142,7 @@ describe('temp-dir', () => {
 			// Wait until the temp dirs can be considered stale.
 			setTimeout(resolve, staleAgeInMillis);
 		});
-		console.log('temp dirs can be considered stale');
-
 		expect(childProcess.exitCode).toBe(null);
-		console.log('calling cleanupStalePlaygroundTempDirs');
 		await cleanupStalePlaygroundTempDirs(
 			substrToIdentifyTempDirs,
 			staleAgeInMillis,
@@ -161,22 +152,16 @@ describe('temp-dir', () => {
 		expect(fs.existsSync(tempDirPath)).toBe(true);
 
 		childProcess.send({ type: 'exit' });
-		console.log('sent exit message');
 		await new Promise((resolve) => {
-			childProcess.on(
-				'exit',
-				(arg) => (console.log('resolved', arg), resolve(arg))
-			);
+			childProcess.on('exit', resolve);
 		});
 		expect(childProcess.exitCode).toBe(0);
 
-		console.log('calling cleanupStalePlaygroundTempDirs again');
 		await cleanupStalePlaygroundTempDirs(
 			substrToIdentifyTempDirs,
 			staleAgeInMillis,
 			path.dirname(tempDirPath)
 		);
-		console.log('before last assertion');
 		// Temp dir was cleaned up when the associated process no longer exists.
 		expect(fs.existsSync(tempDirPath)).toBe(false);
 	});
