@@ -151,7 +151,8 @@ export class BlueprintsV1Handler {
 			this.cliOutput.updateProgress('Caching WordPress for next boot');
 			fs.writeFileSync(
 				preinstalledWpContentPath,
-				// TODO: Fix this type issue and remove the cast.
+				// Comlink proxy is not assignable to UniversalPHP but
+				// proxies all method calls transparently at runtime.
 				(await zipDirectory(playground as UniversalPHP, '/wordpress'))!
 			);
 		}

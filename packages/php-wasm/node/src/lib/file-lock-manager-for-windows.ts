@@ -8,6 +8,7 @@ import type {
 	FileLockManager,
 	WholeFileLockOp,
 	RequestedRangeLock,
+	LockedRange,
 	Pid,
 	Fd,
 	Path,
@@ -261,8 +262,7 @@ export class FileLockManagerForWindows implements FileLockManager {
 				}
 			}
 
-			// TODO: Why is this a type error without `any`? Didn't we pass a shared/exclusive type guard?
-			lockedRangeTree.insert(op as any);
+			lockedRangeTree.insert(op as LockedRange);
 			return true;
 		} else if (op.type === 'exclusive') {
 			let sharedUnlockSuccess;
@@ -299,8 +299,7 @@ export class FileLockManagerForWindows implements FileLockManager {
 				return false;
 			}
 
-			// TODO: Why is this a type error without `any`? Didn't we pass a shared/exclusive type guard?
-			lockedRangeTree.insert(op as any);
+			lockedRangeTree.insert(op as LockedRange);
 			return true;
 		} else {
 			// TODO: Implement partial unlocking like fcntl() allows.

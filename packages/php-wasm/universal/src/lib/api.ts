@@ -126,7 +126,8 @@ export function exposeAPI<Methods, PipedAPI>(
 	let endpoint: Endpoint | undefined;
 	if (targetWorker) {
 		if ('addEventListener' in targetWorker) {
-			// TODO: Deal with these type errors
+			// TODO: MessagePort satisfies Endpoint at runtime but its
+			// addEventListener overloads don't exactly match EventSource.
 			endpoint = targetWorker as Endpoint;
 		} else if ('postMessage' in targetWorker) {
 			endpoint = nodeWorkerEndpoint(targetWorker);
