@@ -288,6 +288,38 @@ describe.each(blueprintVersions)(
 			}
 		});
 
+		// This is a sort of smoke test to confirm Blueprint steps run.
+		// TODO: Consider testing all resource types here.
+		test('should run blueprint including git:resources', async () => {
+			await using cliServer = await runCLI({
+				...suiteCliArgs,
+				command: 'server',
+				blueprint: {
+					steps: [
+						{
+							step: 'installPlugin',
+							options: {
+								activate: true,
+								targetFolderName: 'blocky-formats',
+							},
+							pluginData: {
+								resource: 'git:directory',
+								url: 'https://github.com/dmsnell/blocky-formats.git',
+								ref: 'HEAD',
+								path: '/',
+							},
+						},
+					],
+				},
+			});
+			const response = await cliServer.playground.request({
+				method: 'GET',
+				url: '/',
+			});
+			expect(response.httpStatusCode).toEqual(200);
+			expect(response.text).toContain('My WordPress Website');
+		});
+
 		// TODO: Testing mounting NODEFS within a NODEFS mount
 
 		if (version === 2) {
