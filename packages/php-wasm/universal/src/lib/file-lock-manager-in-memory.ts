@@ -492,7 +492,6 @@ export class FileLock {
 	 * @returns True if a conflicting lock exists, false otherwise.
 	 */
 	private isThereAConflictWithRequestedWholeFileLock(
-		// TODO: Declare types for all the reused Omits in this module.
 		requestedLock: Omit<WholeFileLockOp, 'waitForLock'>
 	) {
 		if (requestedLock.type === 'exclusive') {

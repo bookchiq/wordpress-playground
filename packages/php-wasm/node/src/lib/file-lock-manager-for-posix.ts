@@ -9,9 +9,10 @@ import type {
 import { MAX_ADDRESSABLE_FILE_OFFSET } from '@php-wasm/universal';
 import { constants, fcntlSync, flockSync } from 'fs-ext-extra-prebuilt';
 
+type StoredWholeFileLock = WholeFileLockOp & { path: Path };
+
 export class FileLockManagerForPosix implements FileLockManager {
-	// TODO: Move path of whole file lock into leaf. It is never used for lookup.
-	wholeFileLockMap = new Map<Path, Map<Pid, Map<Fd, WholeFileLockOp>>>();
+	wholeFileLockMap = new Map<Pid, Map<Fd, StoredWholeFileLock>>();
 	rangeLockedFds = new Map<Pid, Map<Path, Set<Fd>>>();
 
 	lockWholeFile(path: string, op: WholeFileLockOp): boolean {
@@ -32,15 +33,15 @@ export class FileLockManagerForPosix implements FileLockManager {
 			// Remember lock so we can release them
 			// when the process exits or the file descriptor is closed.
 			if (op.type === 'unlock') {
-				this.wholeFileLockMap.get(path)?.get(op.pid)?.delete(op.fd);
+				this.wholeFileLockMap.get(op.pid)?.delete(op.fd);
 			} else {
-				if (!this.wholeFileLockMap.has(path)) {
-					this.wholeFileLockMap.set(path, new Map());
+				if (!this.wholeFileLockMap.has(op.pid)) {
+					this.wholeFileLockMap.set(op.pid, new Map());
 				}
-				if (!this.wholeFileLockMap.get(path)!.has(op.pid)) {
-					this.wholeFileLockMap.get(path)!.set(op.pid, new Map());
-				}
-				this.wholeFileLockMap.get(path)!.get(op.pid)!.set(op.fd, op);
+				this.wholeFileLockMap.get(op.pid)!.set(op.fd, {
+					...op,
+					path,
+				});
 			}
 
 			return true;
@@ -138,19 +139,17 @@ export class FileLockManagerForPosix implements FileLockManager {
 	}
 
 	releaseLocksForProcess(targetPid: number): void {
-		for (const [path, pidMap] of this.wholeFileLockMap.entries()) {
-			const fdMap = pidMap.get(targetPid);
-			if (!fdMap) {
-				continue;
-			}
-
-			for (const op of fdMap.values()) {
+		const fdMap = this.wholeFileLockMap.get(targetPid);
+		if (fdMap) {
+			for (const storedLock of fdMap.values()) {
 				// TODO: Log any errors.
 				// TODO: Does a failure here justify throwing an error (and conceding total brokenness)?
-				this.lockWholeFile(path, { ...op, type: 'unlock' });
+				this.lockWholeFile(storedLock.path, {
+					...storedLock,
+					type: 'unlock',
+				});
 			}
-
-			pidMap.delete(targetPid);
+			this.wholeFileLockMap.delete(targetPid);
 		}
 
 		for (const [path, fdSet] of this.rangeLockedFds.get(targetPid) ?? []) {
@@ -186,7 +185,7 @@ export class FileLockManagerForPosix implements FileLockManager {
 		// Do nothing because the native OS is responsible for releasing
 		// whole-file locks when the FD is closed.
 
-		this.wholeFileLockMap.get(targetPath)?.get(targetPid)?.delete(targetFd);
+		this.wholeFileLockMap.get(targetPid)?.delete(targetFd);
 
 		// TODO: Once we implement proper ranged fcntl()-based locks,
 		// release all locks for the given PID and path when the FD is closed.

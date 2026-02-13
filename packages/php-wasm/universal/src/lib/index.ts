@@ -104,7 +104,4 @@ export * from './file-lock-manager-in-memory';
 export * from './file-lock-manager-composite';
 export * from './file-lock-interval-tree';
 
-// TODO: Review exported names and improve if needed.
 export type { Remote } from './comlink-sync';
-
-export * from './file-lock-manager';

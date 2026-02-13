@@ -13,7 +13,7 @@ import {
 } from './comlink-sync';
 import {
 	type NodeProcess,
-	NodeProcessAdapter,
+	nodeProcessEndpoint,
 } from './comlink-node-process-adapter';
 import * as ErrorSerializer from './serialize-error';
 
@@ -56,7 +56,7 @@ export function consumeAPI<APIType>(
 			endpoint = nodeWorkerEndpoint(remote as NodeWorker);
 		} else {
 			// TODO: Strengthen the surrounding checks to confirm process interface
-			endpoint = new NodeProcessAdapter(remote as NodeProcess);
+			endpoint = nodeProcessEndpoint(remote as NodeProcess);
 		}
 	} else {
 		endpoint =
@@ -133,7 +133,7 @@ export function exposeAPI<Methods, PipedAPI>(
 			endpoint = nodeWorkerEndpoint(targetWorker);
 		} else {
 			// TODO: Strengthen the surrounding checks to confirm process interface
-			endpoint = new NodeProcessAdapter(targetWorker);
+			endpoint = nodeProcessEndpoint(targetWorker);
 		}
 	} else {
 		endpoint =

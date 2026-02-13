@@ -1244,8 +1244,7 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 						},
 					}).then(
 						async (
-							// TODO: Rename to spawnResult?
-							workerProcess: SpawnedWorker
+							spawnResult: SpawnedWorker
 						): Promise<
 							[
 								SpawnedWorker,
@@ -1257,7 +1256,7 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 						> => {
 							// Remember the worker process before booting the Playground
 							// so we can clean it up if there is an error during boot.
-							spawnedWorkers.push(workerProcess);
+							spawnedWorkers.push(spawnResult);
 
 							const firstProcessId =
 								workerIndex * processIdSpaceLength + 1;
@@ -1267,18 +1266,18 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 								await exposeFileLockManager(fileLockManager);
 							const playgroundApi =
 								await handler.bootRequestHandler({
-									worker: workerProcess,
+									worker: spawnResult,
 									fileLockManagerPort,
 									firstProcessId,
 									nativeInternalDirPath,
 								});
 
 							workerToPlaygroundMap.set(
-								workerProcess,
+								spawnResult,
 								playgroundApi
 							);
 
-							return [workerProcess, playgroundApi];
+							return [spawnResult, playgroundApi];
 						}
 					);
 

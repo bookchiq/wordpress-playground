@@ -47,7 +47,13 @@ export type PHPLoaderOptionsForNode = PHPLoaderOptions & {
 		 */
 		processId?: number;
 
-		// TODO: Document this.
+		/**
+		 * Factory called during WASM initialization to create
+		 * user-space syscall implementations (flock, fcntl, etc.)
+		 * for a PHP process. Receives process context (PID,
+		 * constants, errno codes) and returns the bound syscall
+		 * functions.
+		 */
 		bindUserSpace?: (
 			userSpaceContext: WasmUserSpaceContext
 		) => WasmUserSpaceAPI;

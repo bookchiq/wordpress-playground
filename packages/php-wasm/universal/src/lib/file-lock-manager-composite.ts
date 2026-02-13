@@ -6,7 +6,6 @@ import {
 } from './file-lock-manager';
 
 // TODO: Add unit tests for this class.
-// TODO: Find a clearer name for this class.
 // TODO: Add optional granular tracing
 export class FileLockManagerComposite implements FileLockManager {
 	nativeLockManager: FileLockManager;

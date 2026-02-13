@@ -1,4 +1,9 @@
-// TODO: Document why we use the term "user space" for this file.
+/**
+ * Per-process syscall implementations (flock, fcntl, etc.) that run
+ * in the context of a single WASM PHP process. Analogous to OS
+ * user space: each process gets its own instance bound to its PID,
+ * constants, and file descriptor table.
+ */
 import type {
 	Emscripten,
 	RequestedRangeLock,
@@ -35,7 +40,6 @@ export type WasmUserSpaceContext = {
 		SEEK_SET: number;
 		SEEK_CUR: number;
 		SEEK_END: number;
-		// TODO: Move these values to ES prefix or someplace like that.
 		// Emscripten does not expose these constants to JS, so we hardcode them here.
 		// Based on
 		// https://github.com/emscripten-core/emscripten/blob/76860cc47cef67f5712a7a03a247bc1baabf7ba4/system/lib/libc/musl/include/sys/file.h#L7-L10
@@ -85,11 +89,11 @@ export type WasmUserSpaceContext = {
 	};
 	FS: typeof Emscripten.FS;
 	PROXYFS: typeof Emscripten.PROXYFS & {
-		// TODO: Add this method to our main Emscripten FS types
+		// Not in Emscripten's FileSystemType; augmented inline here.
 		realPath(node: FSNode): string;
 	};
 	NODEFS: typeof Emscripten.NODEFS & {
-		// TODO: Add this method to our main Emscripten FS types
+		// Not in Emscripten's FileSystemType; augmented inline here.
 		realPath(node: FSNode): string;
 	};
 };
@@ -445,7 +449,6 @@ export function bindUserSpace(
 		return [resolvedOffset, 0];
 	}
 
-	// TODO: Should command just be a string representation of const name?
 	function fcntl64(fd: number, cmd: number, varargs?: number) {
 		js_wasm_trace('fcntl64(%d, %d)', fd, cmd);
 		if (!fileLockManager) {
