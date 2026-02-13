@@ -54,9 +54,12 @@ export function consumeAPI<APIType>(
 	if (appearsToBeNodeEnvironment) {
 		if ('postMessage' in remote) {
 			endpoint = nodeWorkerEndpoint(remote as NodeWorker);
-		} else {
-			// TODO: Strengthen the surrounding checks to confirm process interface
+		} else if ('send' in remote && 'addListener' in remote) {
 			endpoint = nodeProcessEndpoint(remote as NodeProcess);
+		} else {
+			throw new Error(
+				'consumeAPI: remote does not look like a Worker, MessagePort, or Process'
+			);
 		}
 	} else {
 		endpoint =
@@ -131,9 +134,12 @@ export function exposeAPI<Methods, PipedAPI>(
 			endpoint = targetWorker as Endpoint;
 		} else if ('postMessage' in targetWorker) {
 			endpoint = nodeWorkerEndpoint(targetWorker);
-		} else {
-			// TODO: Strengthen the surrounding checks to confirm process interface
+		} else if ('send' in targetWorker && 'addListener' in targetWorker) {
 			endpoint = nodeProcessEndpoint(targetWorker);
+		} else {
+			throw new Error(
+				'exposeAPI: targetWorker does not look like a Worker, MessagePort, or Process'
+			);
 		}
 	} else {
 		endpoint =

@@ -24,6 +24,14 @@ function toLowAndHigh32BitNumbers(num: bigint): [number, number] {
 	return [low, high];
 }
 
+function isErrnoError(e: unknown): boolean {
+	return (
+		e !== null &&
+		typeof e === 'object' &&
+		('errno' in e || 'code' in e || 'syscall' in e)
+	);
+}
+
 function tryLockFileExSync(
 	fd: number,
 	flags: number,
@@ -35,8 +43,10 @@ function tryLockFileExSync(
 	try {
 		lockFileExSync(fd, flags, offsetLow, offsetHigh, lengthLow, lengthHigh);
 		return true;
-	} catch {
-		// TODO: Rethrow if not an errno error
+	} catch (e) {
+		if (!isErrnoError(e)) {
+			throw e;
+		}
 		return false;
 	}
 }
@@ -47,8 +57,10 @@ function tryUnlockFileExSync(fd: number, start: bigint, end: bigint): boolean {
 	try {
 		unlockFileExSync(fd, offsetLow, offsetHigh, lengthLow, lengthHigh);
 		return true;
-	} catch {
-		// TODO: Rethrow if not an errno error
+	} catch (e) {
+		if (!isErrnoError(e)) {
+			throw e;
+		}
 		return false;
 	}
 }
@@ -66,9 +78,6 @@ export class FileLockManagerForWindows implements FileLockManager {
 		const end = 2n ** 64n - 1n;
 
 		if (op.type === 'unlock') {
-			// TODO: Should we skip unlocking if we do not have record of the lock?
-
-			// TODO: Catch errors
 			const success = tryUnlockFileExSync(op.fd, start, end);
 
 			if (success) {
@@ -76,9 +85,12 @@ export class FileLockManagerForWindows implements FileLockManager {
 				if (this.wholeFileLockMap.get(op.pid)?.size === 0) {
 					this.wholeFileLockMap.delete(op.pid);
 				}
+			} else {
+				logger.warn(
+					`lockWholeFile: unlock failed for pid=${op.pid} fd=${op.fd} path=${path}`
+				);
 			}
 
-			// TODO: Else if unlock failed in Windows, probably log an error.
 			return success;
 		}
 
@@ -128,11 +140,19 @@ export class FileLockManagerForWindows implements FileLockManager {
 			let sharedUnlockSuccess;
 			if (preexistingLock?.type === 'shared') {
 				sharedUnlockSuccess = tryUnlockFileExSync(op.fd, start, end);
-				// TODO: Log if there's an error
+				if (!sharedUnlockSuccess) {
+					logger.warn(
+						`lockWholeFile: failed to release shared lock before exclusive upgrade for pid=${op.pid} fd=${op.fd}`
+					);
+				}
 			}
 
 			success = tryLockFileExSync(op.fd, flags, start, end);
-			// TODO: Log if there's an error
+			if (!success) {
+				logger.debug(
+					`lockWholeFile: failed to obtain exclusive lock for pid=${op.pid} fd=${op.fd}`
+				);
+			}
 
 			if (!success && sharedUnlockSuccess) {
 				/*
@@ -319,12 +339,12 @@ export class FileLockManagerForWindows implements FileLockManager {
 				);
 
 				if (!success) {
-					// TODO: Why if partial unlock before failure. Should we throw?
-					// TODO: Report if the lock does not exist.
+					logger.warn(
+						`lockFileByteRange: unlock failed for pid=${op.pid} fd=${lock.fd} range=[${lock.start},${lock.end}]`
+					);
 					return false;
 				}
 
-				// TODO: Report if the lock does not exist.
 				lockedRangeTree.remove(lock);
 			}
 			return true;
@@ -363,12 +383,17 @@ export class FileLockManagerForWindows implements FileLockManager {
 		const fdMap = this.wholeFileLockMap.get(targetPid);
 		if (fdMap) {
 			for (const storedLock of fdMap.values()) {
-				// TODO: Log any errors.
-				// TODO: Does a failure here justify throwing an error (and conceding total brokenness)?
-				this.lockWholeFile(storedLock.path, {
-					...storedLock,
-					type: 'unlock',
-				});
+				try {
+					this.lockWholeFile(storedLock.path, {
+						...storedLock,
+						type: 'unlock',
+					});
+				} catch (e) {
+					logger.error(
+						`releaseLocksForProcess: failed to unlock whole-file lock for pid=${targetPid} fd=${storedLock.fd}`,
+						e
+					);
+				}
 			}
 			this.wholeFileLockMap.delete(targetPid);
 		}
@@ -377,13 +402,18 @@ export class FileLockManagerForWindows implements FileLockManager {
 			const rangesLockedByTargetPid =
 				lockedRangeTree.findLocksForProcess(targetPid);
 			for (const op of rangesLockedByTargetPid) {
-				// TODO: Check for errors and log them.
-				// TODO: Consider throwing an error if this fails.
-				this.lockFileByteRange(
-					path,
-					{ ...op, type: 'unlocked' },
-					false
-				);
+				try {
+					this.lockFileByteRange(
+						path,
+						{ ...op, type: 'unlocked' },
+						false
+					);
+				} catch (e) {
+					logger.error(
+						`releaseLocksForProcess: failed to unlock byte range for pid=${targetPid} fd=${op.fd} path=${path}`,
+						e
+					);
+				}
 				lockedRangeTree.remove(op);
 			}
 		}

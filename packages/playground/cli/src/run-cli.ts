@@ -321,7 +321,6 @@ export async function parseOptionsAndRunCLI(argsToParse: string[]) {
 				type: 'number',
 				default: 9400,
 			},
-			// TODO: Mark this as deprecated since we always use multiple workers.
 			'experimental-multi-worker': {
 				deprecated:
 					'This option is not needed. Multiple workers are always used.',
@@ -1217,7 +1216,6 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 			};
 
 			try {
-				// TODO: Add try/catch
 				const promisesToBoot = [];
 				const workerType = handler.getWorkerType();
 				for (
@@ -1308,8 +1306,7 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 				// while keeping the logic inline.
 				{
 					// TODO: Consider how to avoid Xdebug being enabled during boot.
-					// Boot using the first worker
-					// TODO: Comment on picking a playground to return to the caller.
+					// Boot WordPress using the first worker
 					const firstWorker = spawnedWorkers[0];
 					const firstPlayground =
 						workerToPlaygroundMap.get(firstWorker)!;
@@ -1387,6 +1384,10 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 				}
 
 				return {
+					// TODO: Return the load balancer instead of a Playground.
+					// This playground is a single PHP-WASM thread that can be blocked.
+					// It's better to offer access to multiple php-wasm instances
+					// through the load balancer, possibly just offering a request()/run() methods.
 					playground,
 					server,
 					serverUrl,

@@ -4,8 +4,6 @@ import {
 	type WholeFileLockOp,
 	type FileLockManager,
 } from './file-lock-manager';
-
-// TODO: Add unit tests for this class.
 // TODO: Add optional granular tracing
 export class FileLockManagerComposite implements FileLockManager {
 	nativeLockManager: FileLockManager;
@@ -96,7 +94,6 @@ export class FileLockManagerComposite implements FileLockManager {
 		return wasmConflict;
 	}
 
-	// TODO: Consider try/catch for both release methods. OTOH, if one throws, it is catastrophic.
 	releaseLocksForProcess(pid: number): void {
 		this.nativeLockManager.releaseLocksForProcess(pid);
 		this.wasmLockManager.releaseLocksForProcess(pid);

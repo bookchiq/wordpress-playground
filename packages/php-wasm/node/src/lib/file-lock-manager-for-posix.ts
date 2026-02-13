@@ -8,6 +8,19 @@ import type {
 } from '@php-wasm/universal';
 import { MAX_ADDRESSABLE_FILE_OFFSET } from '@php-wasm/universal';
 import { constants, fcntlSync, flockSync } from 'fs-ext-extra-prebuilt';
+import { logger } from '@php-wasm/logger';
+
+/**
+ * Check whether an error is a lock denial (EWOULDBLOCK, EAGAIN, or EACCES)
+ * as opposed to an unexpected system error.
+ */
+function isLockDenialError(e: unknown): boolean {
+	if (e && typeof e === 'object' && 'code' in e) {
+		const code = (e as { code: string }).code;
+		return code === 'EWOULDBLOCK' || code === 'EAGAIN' || code === 'EACCES';
+	}
+	return false;
+}
 
 type StoredWholeFileLock = WholeFileLockOp & { path: Path };
 
@@ -45,8 +58,10 @@ export class FileLockManagerForPosix implements FileLockManager {
 			}
 
 			return true;
-		} catch {
-			// TODO: Catch and report errors unrelated to flock() denials.
+		} catch (e) {
+			if (!isLockDenialError(e)) {
+				logger.warn('flock(): unexpected error', e);
+			}
 			return false;
 		}
 	}
@@ -100,8 +115,10 @@ export class FileLockManagerForPosix implements FileLockManager {
 			pidMap.get(path)!.add(op.fd);
 
 			return true;
-		} catch {
-			// TODO: Catch and report errors unrelated to fcntl() denials.
+		} catch (e) {
+			if (!isLockDenialError(e)) {
+				logger.warn('fcntl(): unexpected error', e);
+			}
 			return false;
 		}
 	}
@@ -142,12 +159,17 @@ export class FileLockManagerForPosix implements FileLockManager {
 		const fdMap = this.wholeFileLockMap.get(targetPid);
 		if (fdMap) {
 			for (const storedLock of fdMap.values()) {
-				// TODO: Log any errors.
-				// TODO: Does a failure here justify throwing an error (and conceding total brokenness)?
-				this.lockWholeFile(storedLock.path, {
-					...storedLock,
-					type: 'unlock',
-				});
+				try {
+					this.lockWholeFile(storedLock.path, {
+						...storedLock,
+						type: 'unlock',
+					});
+				} catch (e) {
+					logger.error(
+						`releaseLocksForProcess: failed to unlock whole-file lock for pid=${targetPid} fd=${storedLock.fd}`,
+						e
+					);
+				}
 			}
 			this.wholeFileLockMap.delete(targetPid);
 		}
@@ -161,17 +183,24 @@ export class FileLockManagerForPosix implements FileLockManager {
 				 * but since we track which FDs are associated with each process,
 				 * we can simply unlock for all FDs associated with the php-wasm process.
 				 */
-				this.lockFileByteRange(
-					path,
-					{
-						pid: targetPid,
-						fd,
-						type: 'unlocked',
-						start: 0n,
-						end: MAX_ADDRESSABLE_FILE_OFFSET,
-					},
-					false
-				);
+				try {
+					this.lockFileByteRange(
+						path,
+						{
+							pid: targetPid,
+							fd,
+							type: 'unlocked',
+							start: 0n,
+							end: MAX_ADDRESSABLE_FILE_OFFSET,
+						},
+						false
+					);
+				} catch (e) {
+					logger.error(
+						`releaseLocksForProcess: failed to unlock byte range for pid=${targetPid} fd=${fd} path=${path}`,
+						e
+					);
+				}
 			}
 		}
 		this.rangeLockedFds.delete(targetPid);
