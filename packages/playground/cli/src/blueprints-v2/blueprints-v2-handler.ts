@@ -23,7 +23,6 @@ export class BlueprintsV2Handler {
 	private phpVersion: SupportedPHPVersion;
 
 	private siteUrl: string;
-	private processIdSpaceLength: number;
 	private args: RunCLIArgs;
 	private cliOutput: CLIOutput;
 
@@ -31,13 +30,11 @@ export class BlueprintsV2Handler {
 		args: RunCLIArgs,
 		options: {
 			siteUrl: string;
-			processIdSpaceLength: number;
 			cliOutput: CLIOutput;
 		}
 	) {
 		this.args = args;
 		this.siteUrl = options.siteUrl;
-		this.processIdSpaceLength = options.processIdSpaceLength;
 		this.phpVersion = args.php as SupportedPHPVersion;
 		this.cliOutput = options.cliOutput;
 	}
@@ -70,12 +67,10 @@ export class BlueprintsV2Handler {
 	async bootRequestHandler({
 		worker,
 		fileLockManagerPort,
-		firstProcessId,
 		nativeInternalDirPath,
 	}: {
 		worker: SpawnedWorker;
 		fileLockManagerPort: NodeMessagePort;
-		firstProcessId: number;
 		nativeInternalDirPath: string;
 	}) {
 		const playground: RemoteAPI<PlaygroundCliBlueprintV2Worker> =
@@ -87,8 +82,7 @@ export class BlueprintsV2Handler {
 			...this.args,
 			phpVersion: this.phpVersion,
 			siteUrl: this.siteUrl,
-			firstProcessId,
-			processIdSpaceLength: this.processIdSpaceLength,
+			processId: worker.processId,
 			trace: this.args.verbosity === 'debug',
 			withIntl: this.args.intl,
 			withRedis: this.args.redis,

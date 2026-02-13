@@ -552,6 +552,11 @@ export async function parseOptionsAndRunCLI(argsToParse: string[]) {
 				}
 
 				if (args['experimental-blueprints-v2-runner'] === true) {
+					// TODO: Remove this once we have reworked the Blueprints v2 runner.
+					throw new Error(
+						'Blueprints v2 are temporarily disabled while we rework their runtime implementation.'
+					);
+
 					if (args['mode'] !== undefined) {
 						if (args['wordpress-install-mode'] !== undefined) {
 							throw new Error(
@@ -788,7 +793,6 @@ export interface RunCLIServer extends AsyncDisposable {
 	// Provide some details and helpers for automated testing.
 	[internalsKeyForTesting]: {
 		workerThreadCount: number;
-		getWorkerNumberFromProcessId(processId: number): number;
 	};
 }
 
@@ -933,16 +937,6 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 			const targetWorkerCount = Math.max(
 				cpus().length - 1,
 				MINIMUM_WORKER_COUNT
-			);
-
-			// Process IDs appear to be defined as `int` in Emscripten:
-			// https://github.com/emscripten-core/emscripten/blob/95d2bf9c5c27b88ab7de6eba2d8e61ea1af977ac/system/lib/libc/musl/arch/emscripten/bits/alltypes.h#L290
-			// and those are typically 32 bits wide in both 32-bit and 64-bit systems.
-			// Apparently, this is a signed type, so we cannot use the leftmost bit.
-			const maxValueForSigned32BitInteger = 2 ** (32 - 1) - 1;
-			const maxProcessIdValue = maxValueForSigned32BitInteger;
-			const processIdSpaceLength = Math.floor(
-				maxProcessIdValue / targetWorkerCount
 			);
 
 			/*
@@ -1169,13 +1163,11 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 			if (args['experimental-blueprints-v2-runner']) {
 				handler = new BlueprintsV2Handler(args, {
 					siteUrl,
-					processIdSpaceLength,
 					cliOutput,
 				});
 			} else {
 				handler = new BlueprintsV1Handler(args, {
 					siteUrl,
-					processIdSpaceLength,
 					cliOutput,
 				});
 
@@ -1256,9 +1248,6 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 							// so we can clean it up if there is an error during boot.
 							spawnedWorkers.push(spawnResult);
 
-							const firstProcessId =
-								workerIndex * processIdSpaceLength + 1;
-
 							// TODO: Make sure the FileLockManager is exposed to proc_open/cli workers.
 							const fileLockManagerPort =
 								await exposeFileLockManager(fileLockManager);
@@ -1266,7 +1255,6 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 								await handler.bootRequestHandler({
 									worker: spawnResult,
 									fileLockManagerPort,
-									firstProcessId,
 									nativeInternalDirPath,
 								});
 
@@ -1394,9 +1382,6 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 					[Symbol.asyncDispose]: disposeCLI,
 					[internalsKeyForTesting]: {
 						workerThreadCount: targetWorkerCount,
-						getWorkerNumberFromProcessId: (processId: number) => {
-							return Math.floor(processId / processIdSpaceLength);
-						},
 					},
 				};
 			} catch (error) {
@@ -1551,7 +1536,46 @@ function expandStartCommandArgs(
 	return newArgs as RunCLIArgs;
 }
 
+// Process IDs appear to be defined as `int` in Emscripten:
+// https://github.com/emscripten-core/emscripten/blob/95d2bf9c5c27b88ab7de6eba2d8e61ea1af977ac/system/lib/libc/musl/arch/emscripten/bits/alltypes.h#L290
+// and those are typically 32 bits wide in both 32-bit and 64-bit systems.
+// Apparently, this is a signed type, so we cannot use the leftmost bit.
+const maxValueForSigned32BitInteger = 2 ** (32 - 1) - 1;
+const maxProcessIdValue = maxValueForSigned32BitInteger;
+const claimedProcessIds = new Set<number>();
+const initialProcessId = 1;
+let nextProcessId = initialProcessId;
+
+// TODO: Consider ways to test process ID allocation and freeing
+function claimNextProcessId(): number {
+	const maxTries = 1000;
+	for (let i = 0; i < maxTries; i++) {
+		if (claimedProcessIds.has(nextProcessId)) {
+			nextProcessId++;
+			if (nextProcessId > maxProcessIdValue) {
+				nextProcessId = initialProcessId;
+			}
+		} else {
+			claimedProcessIds.add(nextProcessId);
+			return nextProcessId;
+		}
+	}
+
+	throw new Error(`Unable to find free process ID after ${maxTries} tries.`);
+}
+
+function releaseProcessId(processId: number) {
+	if (!claimedProcessIds.has(processId)) {
+		logger.error(
+			`Error: Cannot release process ID that has not been claimed: ${processId}`
+		);
+	}
+
+	claimedProcessIds.delete(processId);
+}
+
 export type SpawnedWorker = {
+	processId: number;
 	worker: Worker;
 	phpPort: NodeMessagePort;
 };
@@ -1592,15 +1616,23 @@ export function spawnWorkerThread(
 	}
 
 	return new Promise<SpawnedWorker>((resolve, reject) => {
+		const processId = claimNextProcessId();
+
 		worker.once('message', function (message: any) {
 			// Let the worker confirm it has initialized.
 			// We could use the 'online' event to detect start of JS execution,
 			// but that would miss initialization errors.
 			if (message.command === 'worker-script-initialized') {
-				resolve({ worker, phpPort: message.phpPort });
+				resolve({
+					processId,
+					worker,
+					phpPort: message.phpPort,
+				});
 			}
 		});
 		worker.once('error', function (e: Error) {
+			releaseProcessId(processId);
+
 			console.error(e);
 			const error = new Error(
 				`Worker failed to load worker. ${
@@ -1614,6 +1646,8 @@ export function spawnWorkerThread(
 			spawned = true;
 		});
 		worker.once('exit', (code) => {
+			releaseProcessId(processId);
+
 			if (!spawned) {
 				reject(new Error(`Worker exited before spawning: ${code}`));
 			}

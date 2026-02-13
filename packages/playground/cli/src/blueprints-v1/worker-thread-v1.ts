@@ -41,8 +41,7 @@ export type WorkerBootWordPressOptions = {
 interface WorkerBootRequestHandlerOptions {
 	siteUrl: string;
 	phpVersion: SupportedPHPVersion;
-	firstProcessId: number;
-	processIdSpaceLength: number;
+	processId: number;
 	trace: boolean;
 	nativeInternalDirPath: string;
 	mountsBeforeWpInstall: Array<Mount>;
@@ -240,26 +239,14 @@ function createPhpRuntimeFactory(
 	options: WorkerBootRequestHandlerOptions,
 	fileLockManager: FileLockManager
 ) {
-	let nextProcessId = options.firstProcessId;
-	const lastProcessId =
-		options.firstProcessId + options.processIdSpaceLength - 1;
 	return async () => {
-		const processId = nextProcessId;
-
-		if (nextProcessId < lastProcessId) {
-			nextProcessId++;
-		} else {
-			// We've reached the end of the process ID space. Start over.
-			nextProcessId = options.firstProcessId;
-		}
-
 		return await loadNodeRuntime(
 			options.phpVersion || RecommendedPHPVersion,
 			{
 				// TODO: Find way to test and ensure this arg is not left out
 				fileLockManager,
 				emscriptenOptions: {
-					processId,
+					processId: options.processId,
 					trace: options.trace ? tracePhpWasm : undefined,
 					nativeInternalDirPath: options.nativeInternalDirPath,
 				},
@@ -291,7 +278,10 @@ function createPhpRuntimeFactory(
  * @returns A promise that resolves to the PHP worker.
  */
 async function createPHPWorker(
-	options: WorkerBootRequestHandlerOptions,
+	// NOTE: We explicitly remove processId from the options
+	// type so the type system will catch if we try to reuse
+	// our parent's process ID.
+	options: Omit<WorkerBootRequestHandlerOptions, 'processId'>,
 	fileLockManager: FileLockManager
 ) {
 	const spawnedWorker = await spawnWorkerThread('v1');
@@ -300,7 +290,10 @@ async function createPHPWorker(
 		spawnedWorker.phpPort
 	);
 	handler.useFileLockManager(fileLockManager as any);
-	await handler.bootRequestHandler(options);
+	await handler.bootRequestHandler({
+		...options,
+		processId: spawnedWorker.processId,
+	});
 
 	return {
 		php: handler,

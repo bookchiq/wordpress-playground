@@ -35,7 +35,6 @@ import type { CLIOutput } from '../cli-output';
  */
 export class BlueprintsV1Handler {
 	private siteUrl: string;
-	private processIdSpaceLength: number;
 	private args: RunCLIArgs;
 	private cliOutput: CLIOutput;
 
@@ -43,13 +42,11 @@ export class BlueprintsV1Handler {
 		args: RunCLIArgs,
 		options: {
 			siteUrl: string;
-			processIdSpaceLength: number;
 			cliOutput: CLIOutput;
 		}
 	) {
 		this.args = args;
 		this.siteUrl = options.siteUrl;
-		this.processIdSpaceLength = options.processIdSpaceLength;
 		this.cliOutput = options.cliOutput;
 	}
 
@@ -163,12 +160,10 @@ export class BlueprintsV1Handler {
 	async bootRequestHandler({
 		worker,
 		fileLockManagerPort,
-		firstProcessId,
 		nativeInternalDirPath,
 	}: {
 		worker: SpawnedWorker;
 		fileLockManagerPort: NodeMessagePort;
-		firstProcessId: number;
 		nativeInternalDirPath: string;
 	}) {
 		const playground = consumeAPI<PlaygroundCliBlueprintV1Worker>(
@@ -185,8 +180,7 @@ export class BlueprintsV1Handler {
 			siteUrl: this.siteUrl,
 			mountsBeforeWpInstall: this.args['mount-before-install'] || [],
 			mountsAfterWpInstall: this.args['mount'] || [],
-			firstProcessId,
-			processIdSpaceLength: this.processIdSpaceLength,
+			processId: worker.processId,
 			followSymlinks: this.args.followSymlinks === true,
 			trace: this.args.experimentalTrace === true,
 			internalCookieStore: this.args.internalCookieStore,
