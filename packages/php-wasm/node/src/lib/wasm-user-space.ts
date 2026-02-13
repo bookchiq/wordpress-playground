@@ -164,15 +164,14 @@ export function bindUserSpace(
 
 	type FcntlLockState = typeof F_RDLCK | typeof F_WRLCK | typeof F_UNLCK;
 	const locking = {
-		// TODO: Does it make sense to drop or keep maybeLockedFds?
-		// /*
-		//  * This is a set of possibly locked file descriptors.
-		//  *
-		//  * When a file descriptor is closed, we need to release any associated held by this process.
-		//  * Instead of trying remember and forget file descriptors as they are locked and unlocked,
-		//  * we just track file descriptors we have locked before and try an unlock when they are closed.
-		//  */
-		// maybeLockedFds: new Set(),
+		/*
+		 * This is a set of possibly locked file descriptors.
+		 *
+		 * When a file descriptor is closed, we need to release any associated held by this process.
+		 * Instead of trying remember and forget file descriptors as they are locked and unlocked,
+		 * we just track file descriptors we have locked before and try an unlock when they are closed.
+		 */
+		maybeLockedFds: new Set(),
 
 		lockStateToFcntl: {
 			shared: F_RDLCK,
@@ -682,9 +681,6 @@ export function bindUserSpace(
 					return -paramsCheckErrno;
 				}
 
-				// TODO: Do we need to keep or drop maybeLockedFds?
-				// locking.maybeLockedFds.add(fd);
-
 				const [nativeFd, nativeFdErrno] =
 					locking.get_native_fd_from_emscripten_fd(fd);
 				if (nativeFdErrno !== 0) {
@@ -722,6 +718,9 @@ export function bindUserSpace(
 						rangeLock,
 						waitForLock
 					);
+					if (succeeded) {
+						locking.maybeLockedFds.add(nativeFd);
+					}
 
 					js_wasm_trace(
 						'fcntl(%d, F_SETLK) %s lockFileByteRange returned %d for range lock %s',
@@ -869,10 +868,9 @@ export function bindUserSpace(
 				vfsPath,
 				succeeded
 			);
-			// TODO: Do we need to keep or drop maybeLockedFds?
-			// if (succeeded) {
-			// 	locking.maybeLockedFds.add(fd);
-			// }
+			if (succeeded) {
+				locking.maybeLockedFds.add(nativeFd);
+			}
 			return succeeded ? 0 : -EWOULDBLOCK;
 		} catch (e) {
 			js_wasm_trace('flock(%d, %d) lockWholeFile error %s', fd, op, e);
@@ -907,16 +905,15 @@ export function bindUserSpace(
 			);
 			return fdCloseResult;
 		}
-		// TODO: Do we need to keep or drop maybeLockedFds?
-		// if (!locking.maybeLockedFds.has(fd)) {
-		// 	js_wasm_trace(
-		// 		'fd_close(%d) not in maybe-locked-list %s result %d',
-		// 		fd,
-		// 		vfsPath,
-		// 		fdCloseResult
-		// 	);
-		// 	return fdCloseResult;
-		// }
+		if (!locking.maybeLockedFds.has(nativeFd)) {
+			js_wasm_trace(
+				'fd_close(%d) not in maybe-locked-list %s result %d',
+				fd,
+				vfsPath,
+				fdCloseResult
+			);
+			return fdCloseResult;
+		}
 
 		if (vfsPathResolutionErrno !== 0) {
 			js_wasm_trace(
