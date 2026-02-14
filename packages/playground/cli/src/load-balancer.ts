@@ -1,3 +1,5 @@
+// TODO: Is there any reason we should not delete this unused module and its tests?
+
 import type { PHPRequest, PHPResponse } from '@php-wasm/universal';
 
 // TODO: Let's merge worker management into PHPProcessManager
