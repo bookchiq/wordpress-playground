@@ -117,7 +117,7 @@ export class BlueprintsV1Handler {
 			sqliteIntegrationPluginZip = undefined;
 		} else {
 			this.cliOutput.updateProgress('Preparing SQLite database');
-			sqliteIntegrationPluginZip = await fetchSqliteIntegration(monitor);
+			sqliteIntegrationPluginZip = await fetchSqliteIntegration();
 		}
 
 		this.cliOutput.updateProgress('Booting WordPress');
@@ -196,6 +196,7 @@ export class BlueprintsV1Handler {
 			withMemcached: this.args.memcached,
 			withXdebug: !!this.args.xdebug,
 			nativeInternalDirPath,
+			pathAliases: this.args.pathAliases,
 		});
 		await playground.isReady();
 		return playground;

@@ -1,7 +1,7 @@
 import type { FileLockManager } from '@php-wasm/universal';
 import { loadNodeRuntime } from '@php-wasm/node';
 import { EmscriptenDownloadMonitor } from '@php-wasm/progress';
-import type { SupportedPHPVersion } from '@php-wasm/universal';
+import type { PathAlias, SupportedPHPVersion } from '@php-wasm/universal';
 import {
 	PHPWorker,
 	releaseApiProxy,
@@ -40,10 +40,10 @@ export type WorkerBootWordPressOptions = {
 
 interface WorkerBootRequestHandlerOptions {
 	siteUrl: string;
+	followSymlinks: boolean;
 	phpVersion: SupportedPHPVersion;
 	processId: number;
 	trace: boolean;
-	nativeInternalDirPath: string;
 	mountsBeforeWpInstall: Array<Mount>;
 	mountsAfterWpInstall: Array<Mount>;
 	/**
@@ -53,12 +53,23 @@ interface WorkerBootRequestHandlerOptions {
 	 *
 	 * Default: false.
 	 */
+	// TODO: This appears not to be used. Confirm and fix or remove.
 	internalCookieStore?: boolean;
-	followSymlinks: boolean;
 	withIntl?: boolean;
 	withRedis?: boolean;
 	withMemcached?: boolean;
 	withXdebug?: boolean;
+	nativeInternalDirPath: string;
+	/**
+	 * PHP constants to define via php.defineConstant().
+	 * Process-specific, set for each PHP instance.
+	 */
+	constants?: Record<string, string | number | boolean | null>;
+	/**
+	 * Path aliases that map URL prefixes to filesystem paths outside
+	 * the document root. Similar to Nginx's `alias` directive.
+	 */
+	pathAliases?: PathAlias[];
 }
 
 /**
@@ -188,6 +199,7 @@ export class PlaygroundCliBlueprintV1Worker extends PHPWorker {
 				},
 				sapiName: 'cli',
 				cookieStore: false,
+				pathAliases: options.pathAliases,
 				spawnHandler: () =>
 					sandboxedSpawnHandlerFactory(() => {
 						let effectiveOptions = options;
