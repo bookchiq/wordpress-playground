@@ -1,4 +1,8 @@
-import type { RemoteAPI, SupportedPHPVersion } from '@php-wasm/universal';
+import type {
+	Promisified,
+	RemoteAPI,
+	SupportedPHPVersion,
+} from '@php-wasm/universal';
 import { consumeAPI } from '@php-wasm/universal';
 import type {
 	PlaygroundCliBlueprintV2Worker,
@@ -6,6 +10,7 @@ import type {
 } from './worker-thread-v2';
 import type { MessagePort as NodeMessagePort } from 'worker_threads';
 import {
+	type PlaygroundCliWorker,
 	type RunCLIArgs,
 	type SpawnedWorker,
 	type WorkerType,
@@ -44,12 +49,9 @@ export class BlueprintsV2Handler {
 	}
 
 	async bootWordPress(
-		phpPort: NodeMessagePort,
+		playground: Promisified<RemoteAPI<PlaygroundCliWorker>>,
 		workerPostInstallMountsPort: NodeMessagePort
 	) {
-		const playground: RemoteAPI<PlaygroundCliBlueprintV2Worker> =
-			consumeAPI(phpPort);
-
 		const workerBootArgs = {
 			command: this.args.command,
 			siteUrl: this.siteUrl,
@@ -57,10 +59,10 @@ export class BlueprintsV2Handler {
 			workerPostInstallMountsPort,
 		};
 
-		await playground.bootWordPress(
-			workerBootArgs,
-			workerPostInstallMountsPort
-		);
+		// TODO: Fix this type issue that requires the cast to unknown
+		await (
+			playground as unknown as PlaygroundCliBlueprintV2Worker
+		).bootWordPress(workerBootArgs, workerPostInstallMountsPort);
 		return playground;
 	}
 

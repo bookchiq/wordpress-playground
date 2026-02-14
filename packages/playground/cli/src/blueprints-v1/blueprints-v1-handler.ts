@@ -1,6 +1,11 @@
 import { logger } from '@php-wasm/logger';
 import { EmscriptenDownloadMonitor, ProgressTracker } from '@php-wasm/progress';
-import { consumeAPI, type UniversalPHP } from '@php-wasm/universal';
+import {
+	consumeAPI,
+	type Promisified,
+	type RemoteAPI,
+	type UniversalPHP,
+} from '@php-wasm/universal';
 import type { BlueprintV1Declaration } from '@wp-playground/blueprints';
 import {
 	compileBlueprintV1,
@@ -20,6 +25,7 @@ import {
 import type { PlaygroundCliBlueprintV1Worker } from './worker-thread-v1';
 import type { MessagePort as NodeMessagePort } from 'worker_threads';
 import {
+	type PlaygroundCliWorker,
 	type RunCLIArgs,
 	type SpawnedWorker,
 	type WorkerType,
@@ -55,7 +61,7 @@ export class BlueprintsV1Handler {
 	}
 
 	async bootWordPress(
-		phpPort: NodeMessagePort,
+		playground: Promisified<RemoteAPI<PlaygroundCliWorker>>,
 		workerPostInstallMountsPort: NodeMessagePort
 	) {
 		let wpDetails: any = undefined;
@@ -114,18 +120,16 @@ export class BlueprintsV1Handler {
 			sqliteIntegrationPluginZip = await fetchSqliteIntegration(monitor);
 		}
 
-		const playground = consumeAPI<PlaygroundCliBlueprintV1Worker>(phpPort);
-
-		// Comlink communication proxy
-		await playground.isConnected();
-
 		this.cliOutput.updateProgress('Booting WordPress');
 
 		const runtimeConfiguration = await resolveRuntimeConfiguration(
 			this.getEffectiveBlueprint()
 		);
 
-		await playground.bootWordPress(
+		// TODO: Fix this type issue that requires the cast to unknown
+		await (
+			playground as unknown as PlaygroundCliBlueprintV1Worker
+		).bootWordPress(
 			{
 				wpVersion: runtimeConfiguration.wpVersion,
 				siteUrl: this.siteUrl,
@@ -150,7 +154,10 @@ export class BlueprintsV1Handler {
 				preinstalledWpContentPath,
 				// Comlink proxy is not assignable to UniversalPHP but
 				// proxies all method calls transparently at runtime.
-				(await zipDirectory(playground as UniversalPHP, '/wordpress'))!
+				(await zipDirectory(
+					playground as unknown as UniversalPHP,
+					'/wordpress'
+				))!
 			);
 		}
 

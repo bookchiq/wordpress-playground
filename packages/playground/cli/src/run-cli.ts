@@ -1,9 +1,12 @@
 import { errorLogPath, logger, LogSeverity } from '@php-wasm/logger';
-import type {
-	PHPRequest,
-	RemoteAPI,
-	SupportedPHPVersion,
-	UniversalPHP,
+import {
+	createObjectPoolProxy,
+	type PHPWorker,
+	type PHPRequest,
+	type Promisified,
+	type RemoteAPI,
+	type SupportedPHPVersion,
+	type UniversalPHP,
 } from '@php-wasm/universal';
 import {
 	PHPResponse,
@@ -35,7 +38,6 @@ import {
 import { startServer } from './start-server';
 import type { PlaygroundCliBlueprintV1Worker } from './blueprints-v1/worker-thread-v1';
 import type { PlaygroundCliBlueprintV2Worker } from './blueprints-v2/worker-thread-v2';
-import { LoadBalancer } from './load-balancer';
 /* eslint-disable no-console */
 import {
 	SupportedPHPVersions,
@@ -777,14 +779,16 @@ export interface RunCLIArgs {
 	reset?: boolean;
 }
 
-type PlaygroundCliWorker =
+// TODO: Maybe we should just be declaring an interface instead of a type union
+export type PlaygroundCliWorker =
 	| PlaygroundCliBlueprintV1Worker
 	| PlaygroundCliBlueprintV2Worker;
 
 export const internalsKeyForTesting = Symbol('playground-cli-testing');
 
 export interface RunCLIServer extends AsyncDisposable {
-	playground: RemoteAPI<PlaygroundCliWorker>;
+	// TODO: Can we simply these types?
+	playground: Promisified<RemoteAPI<PlaygroundCliWorker>>;
 	server: Server;
 	serverUrl: string;
 
@@ -829,8 +833,9 @@ export async function runCLI(
 ): Promise<RunCLIServer>;
 export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void>;
 export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
-	let loadBalancer: LoadBalancer;
-	let playground: RemoteAPI<PlaygroundCliWorker>;
+	let playgroundPool: ReturnType<
+		typeof createObjectPoolProxy<RemoteAPI<PlaygroundCliWorker>>
+	>;
 
 	const spawnedWorkers: SpawnedWorker[] = [];
 	const workerToPlaygroundMap: Map<
@@ -1283,7 +1288,7 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 				}
 
 				await Promise.all(promisesToBoot);
-				loadBalancer = new LoadBalancer(
+				playgroundPool = createObjectPoolProxy(
 					spawnedWorkers.map(
 						(spawnedWorker) =>
 							workerToPlaygroundMap.get(spawnedWorker)!
@@ -1294,10 +1299,6 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 				// while keeping the logic inline.
 				{
 					// TODO: Consider how to avoid Xdebug being enabled during boot.
-					// Boot WordPress using the first worker
-					const firstWorker = spawnedWorkers[0];
-					const firstPlayground =
-						workerToPlaygroundMap.get(firstWorker)!;
 
 					const messageChannelForPostInstallMounts =
 						new NodeMessageChannel();
@@ -1323,13 +1324,11 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 						mainThreadPostInstallMountsPort
 					);
 					await handler.bootWordPress(
-						firstWorker.phpPort,
+						playgroundPool,
 						workerPostInstallMountsPort
 					);
 					mainThreadPostInstallMountsPort.close();
 
-					await firstPlayground!.isReady();
-					playground = firstPlayground;
 					wordPressReady = true;
 
 					if (!args['experimental-blueprints-v2-runner']) {
@@ -1342,13 +1341,14 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 						if (compiledBlueprint) {
 							await runBlueprintV1Steps(
 								compiledBlueprint,
-								firstPlayground as UniversalPHP
+								// TODO: Address the type issue that requires casting to unknown first
+								playgroundPool as unknown as UniversalPHP
 							);
 						}
 					}
 
 					if (args.command === 'build-snapshot') {
-						await zipSite(playground, args.outfile as string);
+						await zipSite(playgroundPool, args.outfile as string);
 						cliOutput.printStatus(`Exported to ${args.outfile}`);
 						await disposeCLI();
 						return;
@@ -1364,7 +1364,9 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 
 				if (args.xdebug && args.experimentalDevtools) {
 					const bridge = await startBridge({
-						phpInstance: playground,
+						// TODO: Fix this type error
+						phpInstance:
+							playgroundPool as unknown as RemoteAPI<PHPWorker>,
 						phpRoot: '/wordpress',
 					});
 
@@ -1372,11 +1374,7 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 				}
 
 				return {
-					// TODO: Return the load balancer instead of a Playground.
-					// This playground is a single PHP-WASM thread that can be blocked.
-					// It's better to offer access to multiple php-wasm instances
-					// through the load balancer, possibly just offering a request()/run() methods.
-					playground,
+					playground: playgroundPool,
 					server,
 					serverUrl,
 					[Symbol.asyncDispose]: disposeCLI,
@@ -1389,8 +1387,8 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 					throw error;
 				}
 				let phpLogs = '';
-				if (await playground?.fileExists(errorLogPath)) {
-					phpLogs = await playground.readFileAsText(errorLogPath);
+				if (await playgroundPool?.fileExists(errorLogPath)) {
+					phpLogs = await playgroundPool.readFileAsText(errorLogPath);
 				}
 				await disposeCLI();
 				throw new Error(phpLogs, { cause: error });
@@ -1426,7 +1424,9 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 				}
 				return new PHPResponse(302, headers, new Uint8Array());
 			}
-			return await loadBalancer.handleRequest(request);
+			// TODO: Explore switching to a worker thread method to adopt an entire HTTP connection
+			// It might be more efficient to let the worker respond directly
+			return await playgroundPool.request(request);
 		},
 	});
 
@@ -1707,7 +1707,7 @@ function openInBrowser(url: string): void {
 }
 
 async function zipSite(
-	playground: RemoteAPI<PlaygroundCliWorker>,
+	playground: Promisified<PlaygroundCliWorker>,
 	outfile: string
 ) {
 	await playground.run({
