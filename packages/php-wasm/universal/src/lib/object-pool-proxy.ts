@@ -77,6 +77,14 @@ export function createObjectPoolProxy<T extends object>(
 
 	return new Proxy({} as Promisified<T>, {
 		get(_target, prop: string | symbol) {
+			// Support returning assigned target properties.
+			// The main reason for this is to allow us to override methods
+			// for testing purposes.
+			// TODO: Add test for this feature?
+			if (prop in _target) {
+				return (_target as any)[prop];
+			}
+
 			// Prevent the proxy from being treated as a thenable,
 			// which would interfere with Promise resolution.
 			if (prop === 'then') {
