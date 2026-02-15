@@ -1,3 +1,5 @@
+// TODO: Review this and make sure it is as simple as possible.
+
 /**
  * Converts an object type to a promisified version where:
  * - Methods return `Promise<Awaited<ReturnType>>` (no double-wrapping)
