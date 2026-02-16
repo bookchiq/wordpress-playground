@@ -953,8 +953,6 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 			: !(await isPortInUse(selectedPort))
 				? selectedPort
 				: 0,
-		onError: (error: NodeJS.ErrnoException) =>
-			cliOutput.printError(error.message),
 		onBind: async (server: Server, port: number) => {
 			const host = '127.0.0.1';
 			const serverUrl = `http://${host}:${port}`;
@@ -1431,6 +1429,9 @@ export async function runCLI(args: RunCLIArgs): Promise<RunCLIServer | void> {
 			}
 			return await loadBalancer.handleRequest(request);
 		},
+	}).catch((error) => {
+		cliOutput.printError(error.message);
+		process.exit(1);
 	});
 
 	if (server && args.command === 'start' && !args.skipBrowser) {
