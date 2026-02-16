@@ -2,7 +2,9 @@
 	"name": "WordPress Playground",
 	"image": "mcr.microsoft.com/devcontainers/javascript-node:20",
 	"features": {
-		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {
+			"moby": false
+		},
 		"ghcr.io/devcontainers/features/github-cli:1": {}
 	},
 	"postCreateCommand": "git submodule update --init --recursive && npm install && npx playwright install --with-deps chromium firefox",
